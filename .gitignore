@@ -1,0 +1,6 @@
+baremetal/target/
+baremetal/sd_mount/
+baremetal/build/
+
+kernel/build/
+*.dtb

@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+cargo build --release &&\
+mkdir -p ./sd_mount &&\
+sudo mount -L DSP-PEG_BOOT ./sd_mount -o uid=$(id -u),gid=$(id -g) &&\
+sudo aarch64-none-elf-objcopy -O binary ./target/aarch64-unknown-none/release/bare_metal_pi_zero ./sd_mount/kernelDSPEG.img &&\
+sudo cp ./sd_files/* ./sd_mount/ &&\
+sudo umount ./sd_mount

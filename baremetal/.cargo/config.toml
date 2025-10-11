@@ -1,0 +1,19 @@
+[build]
+target = "aarch64-unknown-none"
+
+[target.aarch64-unknown-none]
+linker = "aarch64-none-elf-ld"
+runner = "qemu-system-aarch64 -M raspi3ap -serial null -serial mon:stdio -kernel"
+rustflags = [
+  "-C", "target-cpu=cortex-a53",
+  "-C", "target-feature=+neon"
+]
+
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+debug = false
+overflow-checks = false
+incremental = false

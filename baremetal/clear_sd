@@ -1,0 +1,3 @@
+sudo mount -L DSP-PEG_BOOT ./sd_mount -o uid=$(id -u),gid=$(id -g) &&\
+sudo rm ./sd_mount/* -r &&\
+sudo umount ./sd_mount

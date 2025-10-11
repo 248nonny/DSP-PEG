@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+cargo build --release &&\
+mkdir -p build &&\
+aarch64-none-elf-objcopy -O binary ./target/aarch64-unknown-none/release/bare_metal_pi_zero ./build/dsp_peg_fw.bin &&\
+ssh "dsp@peg" "
+set -x
+mkdir -p /home/dsp/firmware
+" && \
+scp build/dsp_peg_fw.bin peg:/home/dsp/firmware/ &&\
+
+ssh "dsp@peg" "
+set -x
+sudo rm /lib/firmware/dsp_peg_fw.bin
+sudo mv /home/dsp/firmware/dsp_peg_fw.bin /lib/firmware
+"
