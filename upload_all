@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+
+./upload_rust
+
+echo "BUILDING AND INSERTING KERNEL MODULE..."
+cd kernel &&\
+./upload.sh

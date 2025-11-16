@@ -8,10 +8,14 @@
 
   outputs = { self, nixpkgs, rust-overlay }:
     let
+
+      globalVersion = "0.1.0";
+
       pkgs = import nixpkgs {
         system = "x86_64-linux";
         overlays = [ rust-overlay.overlays.default ];
       };
+
       rust = pkgs.rust-bin.stable."1.91.0".default.override {
         extensions = [ "rust-src" "rustfmt-preview" "clippy-preview" "llvm-tools-preview" ];
         targets = [
@@ -20,23 +24,37 @@
           "x86_64-unknown-linux-gnu"
         ];
       };
+
+      aarch64Gcc = pkgs.pkgsCross.aarch64-multiplatform.buildPackages.gcc;
+
+      rpiLinker = pkgs.writeShellScriptBin "aarch64-rpi-gcc" ''
+        #!/usr/bin/env bash
+        set -euo pipefail
+        
+        exec ${aarch64Gcc}/bin/aarch64-unknown-linux-gnu-gcc \
+          --sysroot="$SYSROOT" \
+          -Wl,-rpath-link,"$SYSROOT/lib/aarch64-linux-gnu":"$SYSROOT/usr/lib/aarch64-linux-gnu" \
+          -Wl,--dynamic-linker=/lib/ld-linux-aarch64.so.1 \
+          "$@"
+      '';
+        
+      commonNativeInputs = [
+        rust
+        pkgs.pkg-config
+        # pkgs.llvmPackages.lld
+        # pkgs.llvmPackages.bintools
+        pkgs.pkgsCross.aarch64-multiplatform.buildPackages.gcc
+        pkgs.pkgsCross.aarch64-embedded.buildPackages.gcc
+        rpiLinker
+      ];
+
     in {
       devShells.x86_64-linux.default = pkgs.mkShell {
-        nativeBuildInputs = [
-          rust
-          pkgs.pkg-config
-
-          # pkgs.llvmPackages.lld
-          # pkgs.llvmPackages.bintools
-          pkgs.pkgsCross.aarch64-embedded.buildPackages.gcc
-          pkgs.pkgsCross.aarch64-multiplatform.buildPackages.gcc
-        ];
-
-        # buildInputs = [
-          # pkgs.llvmPackages.bintools
-        # ];
+        nativeBuildInputs = commonNativeInputs;
 
         shellHook = ''
+          export SYSROOT="$src/sysroot/"
+          
           # Green color code
           GREEN="\[\033[0;32m\]"
           RESET="\[\033[0m\]"
@@ -44,39 +62,61 @@
         '';
       };
 
-      packages.x86_64-linux.default = pkgs.stdenv.mkDerivation {
-        pname = "DSP-PEG";
-        version = "0.1.0";
+      packages.x86_64-linux = {
+        userspace = pkgs.stdenv.mkDerivation {
+          pname = "DSP-PEG-userspace";
+          version = globalVersion;
+          dontFixup = true;
 
-        src = ./.;
+          src = ./.;
 
-        nativeBuildInputs = [
-          rust
-          pkgs.pkg-config
+          nativeBuildInputs = commonNativeInputs;
 
-          # pkgs.llvmPackages.lld
-          # pkgs.llvmPackages.bintools
-          pkgs.pkgsCross.aarch64-embedded.buildPackages.gcc
-          pkgs.pkgsCross.aarch64-multiplatform.buildPackages.gcc
-        ];
+          configurePhase = "true";
 
-        configurePhase = "true";
+          buildPhase = ''
+            export SYSROOT="$src/sysroot/"
+            cargo build --release --package userspace --target aarch64-unknown-linux-gnu
+          '';
 
-        buildPhase = ''
-          $src/scripts/build_all.sh
-        '';
+          installPhase = ''
+            mkdir -p $out/bin
+            cp target/aarch64-unknown-linux-gnu/release/userspace $out/bin/DSP-PEG-ui
+          '';
+        };
 
-        installPhase = ''
-          set -euo pipefail
+        baremetal = pkgs.stdenv.mkDerivation {
+          pname = "DSP-PEG-baremetal";
+          version = globalVersion;
+          dontFixup = true;
 
-          mkdir -p $out/bin
-          mkdir -p $out/baremetal
-          mkdir -p $out/kernel
-          
-          aarch64-none-elf-objcopy -O binary baremetal/target/aarch64-unknown-none/release/bare_metal_pi_zero $out/baremetal/dsp_peg_fw.bin
-          cp target/aarch64-unknown-linux-gnu/release/userspace $out/bin
-        '';
+          src = ./.;
+
+          nativeBuildInputs = commonNativeInputs;
+
+          configurePhase = "true";
+
+          buildPhase = ''
+            cargo build --release --package baremetal --target aarch64-unknown-none
+          '';
+
+          installPhase = ''
+            mkdir -p $out/baremetal
+          aarch64-none-elf-objcopy -O binary target/aarch64-unknown-none/release/baremetal $out/baremetal/dsp_peg_fw.bin
+          '';
+        };
+
         
+      };
+
+      packages.x86_64-linux.default = pkgs.symlinkJoin {
+        name = "DSP-PEG";
+
+        paths = [
+          self.packages.x86_64-linux.userspace
+          self.packages.x86_64-linux.baremetal
+          # self.packages.x86_64-linux.kernel
+        ];
       };
     };
 }

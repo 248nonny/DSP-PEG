@@ -1,4 +1,7 @@
 
+# sysroot for cross compiling userspace app
+sysroot/
+
 # Build outputs
 build/
 
@@ -10,6 +13,7 @@ target/
 baremetal/sd_mount/
 baremetal/build/
 
+# Kernel build
 kernel/build/
 *.dtb
 

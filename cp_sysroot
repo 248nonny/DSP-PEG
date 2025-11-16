@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+
+echo "SETTING UP SYSROOT DIR:" &&\
+mkdir -p sysroot/lib
+mkdir -p sysroot/usr/lib
+echo "DONE."
+
+echo "COPYING SYSROOT FILES:"
+rsync -avz dsp@peg:/lib/aarch64-linux-gnu sysroot/lib/
+rsync -avz dsp@peg:/usr/lib/aarch64-linux-gnu sysroot/usr/lib/
+rsync -avz dsp@peg:/lib/ld-linux-aarch64.so.1 sysroot/lib
+rsync -avz dsp@peg:/usr/include sysroot/usr/
