@@ -1,4 +1,4 @@
 fn main() {
-    println!("cargo:rerun-if-changed=linker.ld");
-    println!("cargo:rustc-link-arg=-Tlinker.ld");
+    println!("cargo:rerun-if-changed=baremetal/linker.ld");
+    println!("cargo:rustc-link-arg=-Tbaremetal/linker.ld");
 }

@@ -1,0 +1,11 @@
+
+[workspace]
+members = [
+  "userspace",
+  "baremetal",
+  "lib/dsp-core",
+]
+
+package.edition = "2024"
+
+resolver = "2"

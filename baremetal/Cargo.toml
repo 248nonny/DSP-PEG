@@ -1,6 +1,15 @@
 [package]
-name = "bare_metal_pi_zero"
+name = "baremetal"
 version = "0.1.0"
-edition = "2021"
+edition.workspace = true
 
 [dependencies]
+dsp-core = { path = "../lib/dsp-core" }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+debug = false
+overflow-checks = false
+incremental = false

@@ -1,0 +1,12 @@
+[package]
+name = "dsp-core"
+version = "0.1.0"
+edition.workspace = true
+
+[features]
+default = []
+# For building with std, either for testing or for using std-specific parts of the api (if any exist).
+std = []
+host = ["std"]
+
+[dependencies]

@@ -1,6 +1,17 @@
-baremetal/target/
+
+# Build outputs
+build/
+
+# Rust build outputs
+target/
+
+
+# Bare metal build outputs
 baremetal/sd_mount/
 baremetal/build/
 
 kernel/build/
 *.dtb
+
+# Nix things
+result

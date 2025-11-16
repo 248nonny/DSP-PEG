@@ -12,11 +12,8 @@ in
 
 pkgs.mkShell {
   buildInputs = [
-    # pkgs.rustup
     rust
-    pkgs.qemu            # optional, if you want to emulate
-    pkgs.gdb             # optional, for debugging
-    pkgs.cargo-binutils  # for objdump, nm, etc.
+    pkgs.cargo-binutils
     pkgs.llvmPackages.bintools
     pkgs.pkgsCross.aarch64-embedded.buildPackages.gcc
 
@@ -26,8 +23,6 @@ pkgs.mkShell {
     pkgs.python3
     pkgs.picocom
   ];
-
-  RUST_TARGET_PATH = ".";
 
   shellHook = ''
     echo "Welcome to the bare-metal Raspberry Pi Rust dev shell!"

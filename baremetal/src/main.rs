@@ -8,6 +8,8 @@ const MAGIC_COUNTER: *mut u64 = (SHARED_BASE + 0x00) as *mut u64;
 use core::arch::asm;
 use core::panic::PanicInfo;
 
+use dsp_core::testing;
+
 mod boot {
     use core::arch::global_asm;
     global_asm!(
@@ -22,11 +24,13 @@ mod boot {
     );
 }
 
-#[export_name = "_rust_main"]
+#[unsafe(export_name = "_rust_main")]
 pub extern "C" fn rust_main() {
     unsafe {
-        let mut magic_counter = 0xAAAA_AAAA;
+        let mut magic_counter = 0xAAAA_AAAA + testing() as u64;
         core::ptr::write_volatile(MAGIC_COUNTER, magic_counter);
+
+        // let magic_counter = magic_counter + testing() as u64;
 
         loop {
             magic_counter += 1;
@@ -43,17 +47,19 @@ pub extern "C" fn rust_main() {
     }
 }
 
-extern "C" {
+unsafe extern "C" {
     static mut __bss_start: u64;
     static mut __bss_end: u64;
 }
 
-unsafe fn zero_bss() {
-    let mut bss = &raw mut __bss_start as *mut u64;
-    let end = &raw const __bss_end as *const u64;
-    while (bss as *const u64) < end {
-        core::ptr::write_volatile(bss, 0);
-        bss = bss.add(1);
+fn zero_bss() {
+    unsafe {
+        let mut bss = &raw mut __bss_start as *mut u64;
+        let end = &raw const __bss_end as *const u64;
+        while (bss as *const u64) < end {
+            core::ptr::write_volatile(bss, 0);
+            bss = bss.add(1);
+        }
     }
 }
 
