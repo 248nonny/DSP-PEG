@@ -1,7 +1,3 @@
-
-# sysroot for cross compiling userspace app
-sysroot/
-
 # Build outputs
 build/
 

@@ -1,10 +1,9 @@
 
 #include <asm/barrier.h>
-#include <asm/cacheflush.h> // __flush_dcache_area
+#include <asm/cacheflush.h>
 #include <linux/delay.h>
-#include <linux/firmware.h> /* for firmware struct to load dsp binary. */
-#include <linux/init.h>     /* Needed for the macros */
-#include <linux/io.h>
+#include <linux/firmware.h>   /* for firmware struct to load dsp binary. */
+#include <linux/init.h>       /* Needed for the macros */
 #include <linux/io.h>         /* Needed for __iomem, ioremap, etc. */
 #include <linux/ioport.h>     /* struct resource itself */
 #include <linux/kernel.h>     /* Needed for KERN_INFO */
@@ -103,6 +102,8 @@ static void kick_core_spintable(phys_addr_t release_pa, phys_addr_t entry_pa) {
   // catch cache issues, but I'm doing it anyways as an extra sanity check)
   pr_info("spin-table[%pa] = 0x%016lx\n", &release_pa,
           (unsigned long)READ_ONCE(*slot));
+
+  msleep(10);
 
   // Wake up the secondary cpu with the 'sev' instruction! (this is how you wake
   // the extra cores on RPi)

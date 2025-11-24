@@ -5,6 +5,7 @@ const SHARED_BASE: usize = 0x10000000;
 
 const MAGIC_COUNTER: *mut u64 = (SHARED_BASE + 0x00) as *mut u64;
 
+#[cfg(target_arch = "aarch64")]
 use core::arch::asm;
 use core::panic::PanicInfo;
 
