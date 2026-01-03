@@ -6,7 +6,8 @@ ssh "dsp@peg" "
 set -x
 mkdir -p /home/dsp/firmware
 mkdir -p /home/dsp/ui
-"
+rm -f /home/dsp/ui/*
+" &&\
 
 
 echo "COPYING USERSPACE BINARY TO RPI:" &&\
@@ -16,7 +17,7 @@ echo "COPYING FIRMWARE TO RPI:" &&\
 scp result/baremetal/dsp_peg_fw.bin peg:/home/dsp/firmware/ &&\
 
 
-echo "FINISHING SETUP..."
+echo "FINISHING SETUP..." &&\
 
 ssh "dsp@peg" "
 set -x

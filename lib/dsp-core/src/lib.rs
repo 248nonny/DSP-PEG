@@ -1,9 +1,9 @@
 #![cfg_attr(not(test), no_std)]
 
-#[cfg(feature = "std")]
-extern crate std;
+mod q;
 
-pub mod q2_32;
+pub type Q1_31 = q::Q<31>;
+pub type Q16_16 = q::Q<16>;
 
 pub fn testing() -> usize {
     0

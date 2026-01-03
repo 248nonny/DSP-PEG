@@ -1,0 +1,20 @@
+[Unit]
+Description=DSP-PEG UI
+After=getty@tty1.service
+WantedBy=multi-user.target
+
+[Service]
+User=dsp
+WorkingDirectory=/home/dsp
+ExecStart=startx
+StandardInput=tty
+StandardOutput=tty
+StandardError=tty
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+

@@ -2,6 +2,12 @@
 name = "userspace"
 version = "0.1.0"
 edition.workspace = true
+default-run = "editor"
+
+[[bin]]
+name = "editor"
+path = "src/editor.rs"
 
 [dependencies]
 eframe = "0.33.2"
+libc = "0.2"

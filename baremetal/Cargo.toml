@@ -5,6 +5,7 @@ edition.workspace = true
 
 [dependencies]
 dsp-core = { path = "../lib/dsp-core" }
+logging = { path = "../lib/logging" }
 
 [profile.release]
 opt-level = 3

@@ -1,0 +1,8 @@
+#!/bin/sh
+
+xset s off
+xset s noblank
+xset -dpms
+
+exec sudo /home/dsp/ui/DSP-PEG-ui
+

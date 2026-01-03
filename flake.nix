@@ -2,22 +2,21 @@
   description = "DSP-PEG project flake";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
     rust-overlay.url = "github:oxalica/rust-overlay";
+    crane.url = "github:ipetkov/crane";
   };
 
-  outputs = { self, nixpkgs, rust-overlay }:
+  outputs = { self, nixpkgs, rust-overlay, crane }:
     let
-
       globalVersion = "0.1.0";
+      system = "x86_64-linux";
 
       pkgs = import nixpkgs {
-        system = "x86_64-linux";
+        inherit system;
         overlays = [ rust-overlay.overlays.default ];
       };
 
-      # Set up rust toolchain with pinned version,
-      # as well as dev tools and the needed targets.
       rust = pkgs.rust-bin.stable."1.91.0".default.override {
         extensions = [ "rust-src" "rustfmt-preview" "clippy-preview" "llvm-tools-preview" ];
         targets = [
@@ -27,40 +26,39 @@
         ];
       };
 
+      craneLib = (crane.mkLib pkgs).overrideToolchain rust;
 
-      # Specify a rust platform for building rust packages later;
-      # use the pinned toolchain we just created above.
-      rustPlatform = pkgs.makeRustPlatform {
-        cargo = rust;
-        rustc = rust;
+      # Copy linker script
+      src = pkgs.lib.cleanSourceWith {
+        src = ./.;
+        filter = path: type:
+          (craneLib.filterCargoSources path type) || (pkgs.lib.hasSuffix ".ld" path);
       };
 
-      # So we don't have to type this out over and over.
+      # Cross compilation helpers
       cross_bare = pkgs.pkgsCross.aarch64-embedded;
       cross = pkgs.pkgsCross.aarch64-multiplatform;
-        
-      # nativeBuildInputs to be used everywhere.
-      # Mainly cross compiling stuff and the pinned rust toolchain.
+
       commonNativeInputs = [
-        rust
+        # rust is injected via craneLib, but pkg-config/zig are still needed
         pkgs.pkg-config
         pkgs.zig
         pkgs.cargo-zigbuild
-        # pkgs.llvmPackages.lld
-        # pkgs.llvmPackages.bintools
+        pkgs.cargo-show-asm
         cross.buildPackages.gcc
         cross_bare.buildPackages.gcc
-        # rpiLinker
       ];
 
-    in {
-      # Specify dev shell for local building and testing.
-      devShells.x86_64-linux.default = pkgs.mkShell {
-        nativeBuildInputs = [
+      # Common arguments for both builds
+      commonArgs = {
+        inherit src globalVersion;
+        strictDeps = true;
+        nativeBuildInputs = commonNativeInputs;
+      };
 
-          # Dependencies for native eframe rust program;
-          # the idea is that you can run the GUI natively to quickly
-          # test how it looks.
+    in {
+      devShells.${system}.default = pkgs.mkShell {
+        nativeBuildInputs = [
           pkgs.xorg.libxcb
           pkgs.xorg.libXcursor
           pkgs.xorg.libXrandr
@@ -77,134 +75,65 @@
         ];
 
         shellHook = ''
-          # This is needed to run eframe / egui rust programs; i.e. for testing the
-          # userspace app natively.
           export LD_LIBRARY_PATH=/run/opengl-driver/lib/:${pkgs.lib.makeLibraryPath ([pkgs.libGL pkgs.libGLU pkgs.libxkbcommon])}
-
-          
-          # Green color code; Prefix PS1 to show that we are in the dev shell.
           GREEN="\[\033[0;32m\]"
           RESET="\[\033[0m\]"
           export PS1="$GREEN (DSP-dev)$RESET $PS1"
         '';
       };
 
-      # Specify packages to build.
-      # For now, only the rust packages are being built here,
-      # the kernel module (which will be kept small by design)
-      # will be compiled on the rpi (FOR NOW) to avoid cross
-      # compilation headaches.
-      packages.x86_64-linux = {
-        # The userspace rpi gui app, cross compiled.
-        userspace = rustPlatform.buildRustPackage {
-          pname = "DSP-PEG-userspace";
-          version = globalVersion;
-          dontFixup = true;
+      packages.${system} = rec {
 
-          auditable = false;
+        userspaceArgs = commonArgs // {
+            pname = "DSP-PEG-userspace";
 
-          src = ./.;
+            # Fixes home dir permission error for cargo-zigbuild
+            preBuild = ''
+              export HOME=$TMPDIR
+            '';
 
-          nativeBuildInputs = commonNativeInputs;
+            cargoBuildCommand = "cargo zigbuild --release --package userspace --target aarch64-unknown-linux-gnu.2.36 --frozen";
+            cargoExtraArgs = "--package userspace";
+        };
 
-          # Don't add rpath since the nix rpath
-          # won't work on the rpi.
-          NIX_NO_SELF_RPATH = "1";
-          NIX_DONT_SET_RPATH = "1";
-          
-          
-          buildAndTestSubdir = "userspace";
+        userspaceArtifacts = craneLib.buildDepsOnly userspaceArgs;
 
-          cargoLock.lockFile = ./Cargo.lock;
-          cargoHash = pkgs.lib.fakeHash;
+        userspace = craneLib.buildPackage (userspaceArgs // {
+            cargoArtifacts = userspaceArtifacts;
+            installPhase = ''
+              mkdir -p $out/bin
+              cp ./target/aarch64-unknown-linux-gnu/release/editor $out/bin/DSP-PEG-ui
+            '';
+        });
 
-          
-
-          cargoBuildFlags = [
-            "--package" "userspace"
-            "--target" "aarch64-unknown-linux-gnu"
-          ];
-
-          buildPhase = ''
-            runHook preBuild
-
-            export HOME=$PWD
+        baremetalArgs = commonArgs // {
+            pname = "DSP-PEG-baremetal";
             
-            # Zigbuild needed to match rpi glibc version.
-            # (tried using old nixpkgs, but other things broke)
-            cargo zigbuild \
-              --release \
-              --package userspace \
-              --target aarch64-unknown-linux-gnu.2.36 \
-              --frozen
+            cargoExtraArgs = "--package baremetal --target aarch64-unknown-none --frozen";
 
-            runHook postBuild
-          '';
-
-          # Copy the binary to the output directory.
-          installPhase = ''
-            mkdir -p $out/bin
-            cp target/aarch64-unknown-linux-gnu/release/userspace $out/bin/DSP-PEG-ui
-          '';
+            doCheck = false;
+            doDoc = false;
         };
 
-        # The bare-metal DSP payload, cross-compiled.
-        baremetal = rustPlatform.buildRustPackage {
-          pname = "DSP-PEG-baremetal";
-          version = globalVersion;
-          dontFixup = true;
+        baremetalArtifacts = craneLib.buildDepsOnly (baremetalArgs // {
+            dummyMappings = [
+               ./baremetal/linker.ld
+            ];
+        });
 
-          src = ./.;
+        baremetal = craneLib.buildPackage (baremetalArgs // {
+            cargoArtifacts = baremetalArtifacts;
 
-          nativeBuildInputs = commonNativeInputs;
+            installPhase = ''
+              mkdir -p $out/baremetal
+              aarch64-none-elf-objcopy -O binary target/aarch64-unknown-none/release/baremetal $out/baremetal/dsp_peg_fw.bin
+            '';
+        });
 
-          buildAndTestSubdir = "baremetal";
-
-          cargoLock.lockFile = ./Cargo.lock;
-          cargoHash = pkgs.lib.fakeHash;
-
-          CARGO_BUILD_TARGET = "aarch64-unknown-none";
-
-          cargoBuildFlags = [
-            "--package" "baremetal"
-            "--target" "aarch64-unknown-none"
-          ];
-
-          doCheck = false;
-          doDoc = false;
-
-          buildPhase = ''
-            runHook preBuild
-
-
-            cargo build \
-              --release \
-              --package baremetal \
-              --target aarch64-unknown-none \
-              --frozen
-
-            runHook postBuild
-          '';
-          
-          # Extract raw binary file and place it in the output dir;
-          # this will get loaded straight into memory.
-          installPhase = ''
-            mkdir -p $out/baremetal
-            aarch64-none-elf-objcopy -O binary target/aarch64-unknown-none/release/baremetal $out/baremetal/dsp_peg_fw.bin
-          '';
+        default = pkgs.symlinkJoin {
+          name = "DSP-PEG";
+          paths = [ userspace baremetal ];
         };
-
-        
-      };
-
-      # Default package just merges userspace and baremetal.
-      packages.x86_64-linux.default = pkgs.symlinkJoin {
-        name = "DSP-PEG";
-
-        paths = [
-          self.packages.x86_64-linux.userspace
-          self.packages.x86_64-linux.baremetal
-        ];
       };
     };
 }
