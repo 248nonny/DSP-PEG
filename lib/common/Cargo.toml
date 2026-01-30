@@ -1,0 +1,7 @@
+[package]
+name = "common"
+version = "0.0.1"
+edition.workspace = true
+
+[dependencies]
+strum = { version = "0.27.2", default-features = false, features = ["derive"] }

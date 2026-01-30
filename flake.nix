@@ -45,6 +45,8 @@
         pkgs.zig
         pkgs.cargo-zigbuild
         pkgs.cargo-show-asm
+        pkgs.tree
+        cross.pahole
         cross.buildPackages.gcc
         cross_bare.buildPackages.gcc
       ];
@@ -102,13 +104,15 @@
             cargoArtifacts = userspaceArtifacts;
             installPhase = ''
               mkdir -p $out/bin
-              cp ./target/aarch64-unknown-linux-gnu/release/editor $out/bin/DSP-PEG-ui
+              # cp ./target/aarch64-unknown-linux-gnu/release/editor $out/bin/DSP-PEG-ui
+              cp ./target/aarch64-unknown-linux-gnu/release/userspace $out/bin/DSP-PEG-ui
             '';
         });
 
         baremetalArgs = commonArgs // {
             pname = "DSP-PEG-baremetal";
             
+            CARGO_PROFILE = "release-baremetal";
             cargoExtraArgs = "--package baremetal --target aarch64-unknown-none --frozen";
 
             doCheck = false;
@@ -126,13 +130,42 @@
 
             installPhase = ''
               mkdir -p $out/baremetal
-              aarch64-none-elf-objcopy -O binary target/aarch64-unknown-none/release/baremetal $out/baremetal/dsp_peg_fw.bin
+              # tree
+              aarch64-none-elf-objcopy -O binary target/aarch64-unknown-none/release-baremetal/baremetal $out/baremetal/dsp_peg_fw.bin
+              cp target/aarch64-unknown-none/release-baremetal/baremetal $out/baremetal/baremetal-elf
             '';
         });
 
         default = pkgs.symlinkJoin {
           name = "DSP-PEG";
           paths = [ userspace baremetal ];
+
+          nativeBuildInputs = commonNativeInputs;
+
+          postBuild = ''
+            # Ensure shared memory struct layout matches across binaries.
+
+            touch userspace.shared_layout_bare
+            touch baremetal.shared_layout_bare
+
+            pahole -C SharedMem -c 64 $out/bin/DSP-PEG-ui > userspace.shared_layout_struct 2> /dev/null || true
+            pahole -C SharedMem -c 64 $out/baremetal/baremetal-elf > baremetal.shared_layout_struct 2> /dev/null || true 
+
+            cat userspace.shared_layout_struct | grep -oE "\/\*\s*[0-9]+\s*[0-9]+\s*\*\/$" >> userspace.shared_layout_bare
+            cat baremetal.shared_layout_struct | grep -oE "\/\*\s*[0-9]+\s*[0-9]+\s*\*\/$" >> baremetal.shared_layout_bare
+
+            echo "Checking shared memory layout matching..."
+            if diff -u userspace.shared_layout_bare baremetal.shared_layout_bare; then
+              echo "Shared Memory layout matches, proceeding."
+            else
+              echo "ERROR: Shared memory struct layout does not match!"
+              echo "bare metal:"
+              cat baremetal.shared_layout_struct
+              echo "userspace:"
+              cat userspace.shared_layout_struct
+              exit 1
+            fi
+          '';
         };
       };
     };

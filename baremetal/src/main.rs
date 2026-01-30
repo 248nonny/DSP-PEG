@@ -9,7 +9,12 @@ const MAGIC_COUNTER: *mut u64 = (SHARED_BASE + 0x00) as *mut u64;
 use core::arch::asm;
 use core::panic::PanicInfo;
 
+use common::shared_mem::SharedMemBaremetal;
 use dsp_core::testing;
+
+use common::constants::{LOGGING_RING_BUFFER_LOCATION, SHARED_BASE_PHYSICAL_ADDR};
+
+use common::shared_mem::types::AtomicRingBuffer;
 
 mod boot {
     use core::arch::global_asm;
@@ -27,19 +32,23 @@ mod boot {
 
 #[unsafe(export_name = "_rust_main")]
 pub extern "C" fn rust_main() {
-    unsafe {
-        let mut magic_counter = 0xAAAA_AAAA + testing() as u64;
-        core::ptr::write_volatile(MAGIC_COUNTER, magic_counter);
+    let shared_mem: common::shared_mem::SharedMemBaremetal;
 
-        // let magic_counter = magic_counter + testing() as u64;
+    unsafe {
+        // Set up shared memory.
+        let shared_mem_ptr = SHARED_BASE_PHYSICAL_ADDR as *mut common::shared_mem::SharedMem;
+
+        // Set up default state.
+        let shared_mem_default = common::shared_mem::SharedMem::initial_state();
+        core::ptr::write_volatile(shared_mem_ptr, shared_mem_default);
+
+        // Get owned, wrapped reference to shared memory.
+        shared_mem = SharedMemBaremetal::from_ptr(shared_mem_ptr);
 
         loop {
-            magic_counter += 1;
-            core::ptr::write_volatile(MAGIC_COUNTER, magic_counter);
+            let current_val = shared_mem.read_bare_metal_status();
 
-            for _ in 1..1000000 {
-                asm!("nop");
-            }
+            shared_mem.write_bare_metal_status(current_val + 1);
 
             for _ in 1..1000000 {
                 asm!("nop");
