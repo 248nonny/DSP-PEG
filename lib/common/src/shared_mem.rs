@@ -1,23 +1,27 @@
 pub mod types;
 
-use core::sync::atomic::AtomicUsize;
+use core::sync::atomic::AtomicU8;
 use core::sync::atomic::Ordering::{Acquire, Release};
 use types::CacheAligned;
 
+use crate::shared_mem::types::{AtomicRingBuffer, CoreID, CoreStatus};
+
 #[repr(C, align(64))]
 pub struct SharedMem {
-    bare_metal_status: CacheAligned<AtomicUsize>,
+    core_status: CacheAligned<[AtomicU8; 3]>,
+    baremetal_message_buf: CacheAligned<AtomicRingBuffer<types::BaremetalMessage, 1024>>,
 }
 
 impl SharedMem {
     pub fn initial_state() -> Self {
         Self {
-            bare_metal_status: CacheAligned::new(AtomicUsize::new(0)),
+            core_status: CacheAligned::new(core::array::from_fn(|_| AtomicU8::new(0))),
+            baremetal_message_buf: CacheAligned::new(AtomicRingBuffer::new()),
         }
     }
 
-    pub fn read_bare_metal_status(&self) -> usize {
-        self.bare_metal_status.load(Acquire)
+    pub fn read_core_status(&self, core_id: CoreID) -> Option<CoreStatus> {
+        CoreStatus::from_repr(self.core_status[core_id as usize].load(Acquire))
     }
 }
 
@@ -58,7 +62,7 @@ impl SharedMemBaremetal {
         }
     }
 
-    pub fn write_bare_metal_status(&self, val: usize) {
-        self.bare_metal_status.store(val, Release);
+    pub fn write_core_status(&self, core_id: CoreID, core_status: CoreStatus) {
+        self.core_status[core_id as usize].store(core_status as u8, Release);
     }
 }

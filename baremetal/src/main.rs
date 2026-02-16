@@ -9,12 +9,11 @@ const MAGIC_COUNTER: *mut u64 = (SHARED_BASE + 0x00) as *mut u64;
 use core::arch::asm;
 use core::panic::PanicInfo;
 
+use common::shared_mem::types::{CoreID, CoreStatus};
 use common::shared_mem::SharedMemBaremetal;
-use dsp_core::testing;
+// use dsp_core::testing;
 
-use common::constants::{LOGGING_RING_BUFFER_LOCATION, SHARED_BASE_PHYSICAL_ADDR};
-
-use common::shared_mem::types::AtomicRingBuffer;
+use common::constants::SHARED_BASE_PHYSICAL_ADDR;
 
 mod boot {
     use core::arch::global_asm;
@@ -45,12 +44,17 @@ pub extern "C" fn rust_main() {
         // Get owned, wrapped reference to shared memory.
         shared_mem = SharedMemBaremetal::from_ptr(shared_mem_ptr);
 
+        let mut status = CoreStatus::Init;
+
         loop {
-            let current_val = shared_mem.read_bare_metal_status();
+            shared_mem.write_core_status(CoreID::Core1, status);
 
-            shared_mem.write_bare_metal_status(current_val + 1);
+            status = match &mut status {
+                CoreStatus::Idle => CoreStatus::Running,
+                _ => CoreStatus::Idle,
+            };
 
-            for _ in 1..1000000 {
+            for _ in 1..2500000 {
                 asm!("nop");
             }
         }

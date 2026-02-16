@@ -4,9 +4,15 @@ version = "0.0.1"
 edition.workspace = true
 
 [dependencies]
-eframe = "0.33.2"
+eframe = {version = "0.33.2", default-features = false, features = [
+    "x11",
+    "glow",
+    "default_fonts",
+] }
 libc = "0.2"
 common = { path = "../lib/common" }
+simple-log = "2.4.0"
+chrono = "0.4.43"
 
 [features]
 default = ["rpi"]
