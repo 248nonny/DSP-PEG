@@ -68,15 +68,20 @@ trait CheckPow2<const N: usize> {
 pub struct AtomicRingBufferSPSC<T: BufPayload, const N: usize> {
     write_index: CacheAligned<AtomicUsize>,
     read_index: CacheAligned<AtomicUsize>,
-    buffer: UnsafeCell<[T; N]>,
+    buffer: [UnsafeCell<T>; N],
+}
+
+#[repr(C)]
+struct StatusElement<T> {
+    element: UnsafeCell<T>,
+    status: AtomicBool,
 }
 
 #[repr(C, align(64))]
 pub struct AtomicRingBufferMPSC<T: BufPayload, const N: usize> {
     write_index: CacheAligned<AtomicUsize>,
     read_index: CacheAligned<AtomicUsize>,
-    status: [AtomicBool; N],
-    buffer: UnsafeCell<[T; N]>,
+    buffer: [CacheAligned<StatusElement<T>>; N],
 }
 
 impl<T: BufPayload, const N: usize> CheckPow2<N> for AtomicRingBufferSPSC<T, N> {
@@ -96,7 +101,7 @@ impl<T: BufPayload, const N: usize> FIFOBuffer<T, AtomicRingBufferErr>
         Self {
             write_index: CacheAligned(AtomicUsize::new(0)),
             read_index: CacheAligned(AtomicUsize::new(0)),
-            buffer: UnsafeCell::new([T::default(); N]),
+            buffer: core::array::from_fn(|_| UnsafeCell::new(T::default())),
         }
     }
 
@@ -111,7 +116,9 @@ impl<T: BufPayload, const N: usize> FIFOBuffer<T, AtomicRingBufferErr>
         }
 
         unsafe {
-            (*self.buffer.get())[write_idx] = item;
+            let write_ptr = self.buffer[write_idx].get();
+            write_ptr.write(item);
+            // (*self.buffer.get())[write_idx] = item;
         }
 
         self.write_index.0.store(next_write_idx, Ordering::Release);
@@ -120,15 +127,16 @@ impl<T: BufPayload, const N: usize> FIFOBuffer<T, AtomicRingBufferErr>
     }
 
     fn read_one(&self) -> Result<T, AtomicRingBufferErr> {
-        let write_idx = self.write_index.0.load(Ordering::Acquire);
         let read_idx = self.read_index.0.load(Ordering::Relaxed);
+        let write_idx = self.write_index.0.load(Ordering::Acquire);
 
         if write_idx == read_idx {
             return Err(AtomicRingBufferErr::NoMessagesErr);
         }
 
         unsafe {
-            let out = (*self.buffer.get())[read_idx];
+            let read_ptr = self.buffer[read_idx].get();
+            let out = read_ptr.read();
             self.read_index
                 .0
                 .store((read_idx + 1) & (N - 1), Ordering::Release);
@@ -147,8 +155,12 @@ impl<T: BufPayload, const N: usize> FIFOBuffer<T, AtomicRingBufferErr>
         Self {
             write_index: CacheAligned(AtomicUsize::new(0)),
             read_index: CacheAligned(AtomicUsize::new(0)),
-            status: core::array::from_fn(|_n| AtomicBool::from(false)),
-            buffer: UnsafeCell::new([T::default(); N]),
+            buffer: core::array::from_fn(|_| {
+                CacheAligned(StatusElement {
+                    element: UnsafeCell::new(T::default()),
+                    status: AtomicBool::new(false),
+                })
+            }),
         }
     }
 
@@ -175,10 +187,11 @@ impl<T: BufPayload, const N: usize> FIFOBuffer<T, AtomicRingBufferErr>
         }
 
         unsafe {
-            (*self.buffer.get())[write_idx] = item;
+            let element_ptr = self.buffer[write_idx].element.get();
+            element_ptr.write(item);
         }
 
-        self.status[write_idx].store(true, Ordering::Release);
+        self.buffer[write_idx].status.store(true, Ordering::Release);
 
         Ok(())
     }
@@ -186,16 +199,17 @@ impl<T: BufPayload, const N: usize> FIFOBuffer<T, AtomicRingBufferErr>
     fn read_one(&self) -> Result<T, AtomicRingBufferErr> {
         let read_idx = self.read_index.0.load(Ordering::Relaxed);
 
-        if !self.status[read_idx].load(Ordering::Acquire) {
+        if !self.buffer[read_idx].status.load(Ordering::Acquire) {
             return Err(AtomicRingBufferErr::NoMessagesErr);
         }
 
         let out;
         unsafe {
-            out = (*self.buffer.get())[read_idx];
+            let element_ptr = self.buffer[read_idx].element.get();
+            out = element_ptr.read();
         }
 
-        self.status[read_idx].store(false, Ordering::Release);
+        self.buffer[read_idx].status.store(false, Ordering::Release);
 
         self.read_index
             .0
