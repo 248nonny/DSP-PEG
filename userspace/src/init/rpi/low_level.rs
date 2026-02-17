@@ -17,7 +17,7 @@ pub fn get_shared_mem() -> Option<SharedMemUserspace> {
         let mem = OpenOptions::new()
             .read(true)
             .write(true)
-            .custom_flags(libc::O_SYNC)
+            .custom_flags(libc::O_RDWR)
             .open("/dev/mem")
             .unwrap();
 

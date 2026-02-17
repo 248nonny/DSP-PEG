@@ -7,7 +7,7 @@ pub enum PedalControllerStatus {
 
 pub trait PedalController {
     fn status(&self) -> Option<[CoreStatus; 3]>;
-
+    fn print_new_messages(&self);
     // fn poll_pedal_info_stream(&self) -> Vec<(PedalMessageType, String)>;
 }
 

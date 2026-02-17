@@ -1,15 +1,12 @@
 #![no_std]
 #![no_main]
 
-const SHARED_BASE: usize = 0x10000000;
-
-const MAGIC_COUNTER: *mut u64 = (SHARED_BASE + 0x00) as *mut u64;
-
-#[cfg(target_arch = "aarch64")]
 use core::arch::asm;
+
+#[cfg(not(test))]
 use core::panic::PanicInfo;
 
-use common::shared_mem::types::{CoreID, CoreStatus};
+use common::shared_mem::types::{AtomicRingBufferErr, CoreID, CoreStatus};
 use common::shared_mem::SharedMemBaremetal;
 // use dsp_core::testing;
 
@@ -44,15 +41,30 @@ pub extern "C" fn rust_main() {
         // Get owned, wrapped reference to shared memory.
         shared_mem = SharedMemBaremetal::from_ptr(shared_mem_ptr);
 
-        let mut status = CoreStatus::Init;
+        // let mut status = CoreStatus::Init;
+        let mut status;
+
+        let mut counter: u8 = 0;
 
         loop {
-            shared_mem.write_core_status(CoreID::Core1, status);
+            counter += 1;
 
-            status = match &mut status {
-                CoreStatus::Idle => CoreStatus::Running,
-                _ => CoreStatus::Idle,
+            let r = shared_mem.write_message(
+                CoreID::Core1,
+                common::shared_mem::types::BaremetalMessage::TestSendingAU8Lol(counter),
+            );
+
+            // status = match &mut status {
+            //     CoreStatus::Idle => CoreStatus::Running,
+            //     _ => CoreStatus::Idle,
+            // };
+
+            status = match r {
+                Ok(()) => CoreStatus::Running,
+                Err(_) => CoreStatus::Idle,
             };
+
+            shared_mem.write_core_status(CoreID::Core1, status);
 
             for _ in 1..2500000 {
                 asm!("nop");
@@ -68,8 +80,8 @@ unsafe extern "C" {
 
 fn zero_bss() {
     unsafe {
-        let mut bss = &raw mut __bss_start as *mut u64;
-        let end = &raw const __bss_end as *const u64;
+        let mut bss: *mut u64 = &raw mut __bss_start;
+        let end: *const u64 = &raw const __bss_end;
         while (bss as *const u64) < end {
             core::ptr::write_volatile(bss, 0);
             bss = bss.add(1);
@@ -78,6 +90,7 @@ fn zero_bss() {
 }
 
 #[panic_handler]
+#[cfg(not(test))]
 fn panic(_info: &PanicInfo) -> ! {
     loop {}
 }

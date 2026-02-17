@@ -1,35 +1,6 @@
 use core::cell::UnsafeCell;
-use core::sync::atomic::{AtomicUsize, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use strum::FromRepr;
-
-pub enum AtomicRingBufferErr {
-    NoSpaceErr,
-    NoMessagesErr,
-}
-
-#[repr(u8)]
-#[derive(Clone, Copy, FromRepr)]
-pub enum CoreID {
-    Core1 = 0,
-    Core2 = 1,
-    Core3 = 2,
-}
-
-#[repr(u8)]
-#[derive(FromRepr, Clone, Copy, Debug)]
-pub enum CoreStatus {
-    Init = 0,
-    Idle = 1,
-    Running = 2,
-}
-
-#[repr(u8)]
-#[derive(FromRepr)]
-pub enum PedalMessageType {
-    Info = 0,
-    Warn = 1,
-    Err = 2,
-}
 
 #[repr(C, align(64))]
 pub struct CacheAligned<T>(T);
@@ -47,18 +18,81 @@ impl<T> CacheAligned<T> {
     }
 }
 
-pub trait AtomicBufPayload: Copy + Default {}
-impl<T> AtomicBufPayload for T where T: Copy + Default {}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AtomicRingBufferErr {
+    NoSpaceErr,
+    NoMessagesErr,
+    AtomicConflictErr,
+}
+
+#[repr(u8)]
+#[derive(Clone, Copy, FromRepr, Default)]
+pub enum CoreID {
+    #[default]
+    Core1 = 0,
+    Core2 = 1,
+    Core3 = 2,
+}
+
+#[repr(u8)]
+#[derive(FromRepr, Clone, Copy, Debug)]
+pub enum CoreStatus {
+    Init = 0,
+    Idle = 1,
+    Running = 2,
+}
+
+#[repr(u8)]
+#[derive(FromRepr, Clone, Copy, Default, Debug, PartialEq, Eq)]
+pub enum BaremetalMessage {
+    #[default]
+    Ping,
+    TestSendingAU8Lol(u8),
+}
+
+pub trait BufPayload: Copy + Default {}
+impl<T> BufPayload for T where T: Copy + Default {}
+
+pub trait FIFOBuffer<T: BufPayload, E> {
+    fn new() -> Self;
+    fn push(&self, item: T) -> Result<(), E>;
+    fn read_one(&self) -> Result<T, E>;
+}
+
+trait CheckPow2<const N: usize> {
+    // N must be a power of 2...
+    const CHECK_POW_2: () = assert!(N > 0 && (N & (N - 1)) == 0,);
+}
 
 #[repr(C, align(64))]
-pub struct AtomicRingBuffer<T: AtomicBufPayload, const N: usize> {
+pub struct AtomicRingBufferSPSC<T: BufPayload, const N: usize> {
     write_index: CacheAligned<AtomicUsize>,
     read_index: CacheAligned<AtomicUsize>,
     buffer: UnsafeCell<[T; N]>,
 }
 
-impl<T: AtomicBufPayload, const N: usize> AtomicRingBuffer<T, N> {
-    pub fn new() -> Self {
+#[repr(C, align(64))]
+pub struct AtomicRingBufferMPSC<T: BufPayload, const N: usize> {
+    write_index: CacheAligned<AtomicUsize>,
+    read_index: CacheAligned<AtomicUsize>,
+    status: [AtomicBool; N],
+    buffer: UnsafeCell<[T; N]>,
+}
+
+impl<T: BufPayload, const N: usize> CheckPow2<N> for AtomicRingBufferSPSC<T, N> {
+    const CHECK_POW_2: () = assert!(N > 0 && (N & (N - 1)) == 0,);
+}
+
+impl<T: BufPayload, const N: usize> AtomicRingBufferMPSC<T, N> {
+    const CHECK_POW_2: () = assert!(N > 0 && (N & (N - 1)) == 0,);
+}
+
+impl<T: BufPayload, const N: usize> FIFOBuffer<T, AtomicRingBufferErr>
+    for AtomicRingBufferSPSC<T, N>
+{
+    fn new() -> Self {
+        Self::CHECK_POW_2;
+
         Self {
             write_index: CacheAligned(AtomicUsize::new(0)),
             read_index: CacheAligned(AtomicUsize::new(0)),
@@ -66,11 +100,13 @@ impl<T: AtomicBufPayload, const N: usize> AtomicRingBuffer<T, N> {
         }
     }
 
-    pub fn push(&self, item: T) -> Result<(), AtomicRingBufferErr> {
+    fn push(&self, item: T) -> Result<(), AtomicRingBufferErr> {
         let write_idx = self.write_index.0.load(Ordering::Relaxed);
         let read_idx = self.read_index.0.load(Ordering::Acquire);
 
-        if (write_idx + 1) % N == read_idx {
+        let next_write_idx = (write_idx + 1) & (N - 1);
+
+        if next_write_idx == read_idx {
             return Err(AtomicRingBufferErr::NoSpaceErr);
         }
 
@@ -78,14 +114,12 @@ impl<T: AtomicBufPayload, const N: usize> AtomicRingBuffer<T, N> {
             (*self.buffer.get())[write_idx] = item;
         }
 
-        self.write_index
-            .0
-            .store((write_idx + 1) % N, Ordering::Release);
+        self.write_index.0.store(next_write_idx, Ordering::Release);
 
         Ok(())
     }
 
-    pub fn read(&self) -> Result<T, AtomicRingBufferErr> {
+    fn read_one(&self) -> Result<T, AtomicRingBufferErr> {
         let write_idx = self.write_index.0.load(Ordering::Acquire);
         let read_idx = self.read_index.0.load(Ordering::Relaxed);
 
@@ -97,21 +131,87 @@ impl<T: AtomicBufPayload, const N: usize> AtomicRingBuffer<T, N> {
             let out = (*self.buffer.get())[read_idx];
             self.read_index
                 .0
-                .store((read_idx + 1) % N, Ordering::Release);
+                .store((read_idx + 1) & (N - 1), Ordering::Release);
 
             Ok(out)
         }
     }
 }
 
-impl<T: AtomicBufPayload, const N: usize> core::default::Default for AtomicRingBuffer<T, N> {
+impl<T: BufPayload, const N: usize> FIFOBuffer<T, AtomicRingBufferErr>
+    for AtomicRingBufferMPSC<T, N>
+{
+    fn new() -> Self {
+        Self::CHECK_POW_2;
+
+        Self {
+            write_index: CacheAligned(AtomicUsize::new(0)),
+            read_index: CacheAligned(AtomicUsize::new(0)),
+            status: core::array::from_fn(|_n| AtomicBool::from(false)),
+            buffer: UnsafeCell::new([T::default(); N]),
+        }
+    }
+
+    fn push(&self, item: T) -> Result<(), AtomicRingBufferErr> {
+        let write_idx = self.write_index.0.load(Ordering::Acquire);
+        let read_idx = self.read_index.0.load(Ordering::Acquire);
+
+        let next_write_idx = (write_idx + 1) & (N - 1);
+
+        if next_write_idx == read_idx {
+            return Err(AtomicRingBufferErr::NoSpaceErr);
+        }
+
+        let update_write_idx_result = self.write_index.compare_exchange(
+            write_idx,
+            next_write_idx,
+            Ordering::Acquire,
+            Ordering::Relaxed,
+        );
+
+        match update_write_idx_result {
+            Ok(_) => (),
+            Err(_) => return Err(AtomicRingBufferErr::AtomicConflictErr),
+        }
+
+        unsafe {
+            (*self.buffer.get())[write_idx] = item;
+        }
+
+        self.status[write_idx].store(true, Ordering::Release);
+
+        Ok(())
+    }
+
+    fn read_one(&self) -> Result<T, AtomicRingBufferErr> {
+        let read_idx = self.read_index.0.load(Ordering::Relaxed);
+
+        if !self.status[read_idx].load(Ordering::Acquire) {
+            return Err(AtomicRingBufferErr::NoMessagesErr);
+        }
+
+        let out;
+        unsafe {
+            out = (*self.buffer.get())[read_idx];
+        }
+
+        self.status[read_idx].store(false, Ordering::Release);
+
+        self.read_index
+            .0
+            .store((read_idx + 1) & (N - 1), Ordering::Release);
+        Ok(out)
+    }
+}
+
+impl<T: BufPayload, const N: usize> core::default::Default for AtomicRingBufferSPSC<T, N> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-#[repr(C)]
-#[derive(Clone, Default, Copy)]
-pub struct BaremetalMessage {
-    hello: u8,
+impl<T: BufPayload, const N: usize> core::default::Default for AtomicRingBufferMPSC<T, N> {
+    fn default() -> Self {
+        Self::new()
+    }
 }

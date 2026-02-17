@@ -11,7 +11,9 @@ eframe = {version = "0.33.2", default-features = false, features = [
 ] }
 libc = "0.2"
 common = { path = "../lib/common" }
+log = "0.4.29"
 simple-log = "2.4.0"
+log-panics = "2"
 chrono = "0.4.43"
 
 [features]

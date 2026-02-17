@@ -105,7 +105,7 @@
             installPhase = ''
               mkdir -p $out/bin
               # cp ./target/aarch64-unknown-linux-gnu/release/editor $out/bin/DSP-PEG-ui
-              cp ./target/aarch64-unknown-linux-gnu/release/userspace $out/bin/DSP-PEG-ui
+              cp ./target/aarch64-unknown-linux-gnu/release/userspace $out/bin/DSP-PEG-ui-debug
             '';
         });
 
@@ -148,12 +148,12 @@
             touch userspace.shared_layout_bare
             touch baremetal.shared_layout_bare
 
-            pahole -C SharedMem -c 64 $out/bin/DSP-PEG-ui > userspace.shared_layout_struct 2> /dev/null || true
+            pahole -C SharedMem -c 64 $out/bin/DSP-PEG-ui-debug > userspace.shared_layout_struct 2> /dev/null || true
             pahole -C SharedMem -c 64 $out/baremetal/baremetal-elf > baremetal.shared_layout_struct 2> /dev/null || true 
 
-            cat userspace.shared_layout_struct | grep -oE "\/\*\s*[0-9]+\s*[0-9]+\s*\*\/$" >> userspace.shared_layout_bare
-            cat baremetal.shared_layout_struct | grep -oE "\/\*\s*[0-9]+\s*[0-9]+\s*\*\/$" >> baremetal.shared_layout_bare
-
+            cat userspace.shared_layout_struct | grep -E '/\* *[0-9]+ *[0-9]+ *\*/$' >> userspace.shared_layout_bare
+            cat baremetal.shared_layout_struct | grep -E '/\* *[0-9]+ *[0-9]+ *\*/$' >> baremetal.shared_layout_bare
+            
             echo "Checking shared memory layout matching..."
             if diff -u userspace.shared_layout_bare baremetal.shared_layout_bare; then
               echo "Shared Memory layout matches, proceeding."
@@ -165,6 +165,12 @@
               cat userspace.shared_layout_struct
               exit 1
             fi
+
+            cp -L $out/bin/DSP-PEG-ui-debug $out/bin/DSP-PEG-ui
+            chmod 777 $out/bin/DSP-PEG-ui
+            $STRIP $out/bin/DSP-PEG-ui
+            chmod 555 $out/bin/DSP-PEG-ui
+            
           '';
         };
       };

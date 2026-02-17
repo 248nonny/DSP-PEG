@@ -5,3 +5,4 @@ edition.workspace = true
 
 [dependencies]
 strum = { version = "0.27.2", default-features = false, features = ["derive"] }
+log = "0.4.29"

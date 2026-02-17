@@ -1,12 +1,15 @@
 use chrono::Local;
+use common::shared_mem::types::AtomicRingBufferErr;
 use std::time::{Duration, Instant};
 
 // shared memory stuff.
 use eframe::egui;
 
-use crate::pedal_controller::PedalController;
+use crate::pedal_controller::{rpi::PiPedalController, PedalController};
 
-use simple_log::{error, info, trace};
+// use simple_log::{error, info, trace};
+
+use log::{error, info, trace};
 
 mod init;
 mod pedal_controller;
@@ -27,6 +30,8 @@ fn main() -> Result<(), eframe::Error> {
         .build();
 
     simple_log::new(config).unwrap();
+
+    log_panics::init();
 
     trace!("Hello, World!");
 
@@ -57,14 +62,22 @@ fn main() -> Result<(), eframe::Error> {
     )
 }
 
-struct MyApp<PC: PedalController> {
+// struct MyApp<PC: PedalController> {
+//     text: String,
+//     x: usize,
+//     last_bare_metal_poll: Instant,
+//     pedal_controller: PC,
+// }
+
+struct MyApp {
     text: String,
     x: usize,
     last_bare_metal_poll: Instant,
-    pedal_controller: PC,
+    pedal_controller: PiPedalController,
 }
 
-impl<PC: PedalController> eframe::App for MyApp<PC> {
+// impl<PC: PedalController> eframe::App for MyApp<PC> {
+impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
             if self.last_bare_metal_poll.elapsed().as_secs() >= 1 {
@@ -82,12 +95,9 @@ impl<PC: PedalController> eframe::App for MyApp<PC> {
                 None => error!("Error reading atomic core status!"),
             }
 
-            // while let Ok(x) = self.atomic_ring_buffer.read() {
-            //     println!("{}", x);
-            //     // self.text.push(x as char);
-            // }
+            self.pedal_controller.print_new_messages();
 
-            // ui.label(&self.text);
+            self.pedal_controller.test_writing_message();
 
             egui::ScrollArea::vertical()
                 .stick_to_bottom(true)
