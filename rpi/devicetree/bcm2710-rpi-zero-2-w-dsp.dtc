@@ -57,12 +57,12 @@
 		phandle = <0x3c>;
 
 		dsp_shared: dsp_shared@10000000 {
-			reg = <0x10000000 0x00100000>; // 1MB of shared memory for two-wway communication between DSP and kernel.
+			reg = <0x10000000 0x01000000>; // 1MB of shared memory for two-wway communication between DSP and kernel.
 			no-map;
 		};
 
-		dsp_reserved: dsp_reserved@10100000 {
-			reg = <0x10100000 0x0B37F000>; // reserved for bare-metal cores, ending before GPU memory (last 64MB).
+		dsp_reserved: dsp_reserved@11000000 {
+			reg = <0x11000000 0x0A37F000>; // reserved for bare-metal cores, ending before GPU memory (last 64MB).
 			no-map;
 		};
 

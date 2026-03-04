@@ -186,7 +186,7 @@ static int __init init_dsp_peg(void) {
   printk(KERN_INFO "Starting bare metal execution!\n");
 
   // Tell the core to start executing the bare metal payload!
-  kick_core_spintable(0xE0, 0x10100000);
+  kick_core_spintable(0xE0, 0x11000000);
 
   // Check the base address of the shared region for changes;
   // the bare metal program is currently set up to set this to 0 and then
