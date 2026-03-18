@@ -13,14 +13,6 @@ impl PiPedalController {
     pub fn new(shared_mem: SharedMemUserspace) -> Self {
         Self { shared_mem }
     }
-
-    pub fn test_writing_message(&self) {
-        info!(
-            "testing sending a message: {:?}",
-            self.shared_mem
-                .write_message(CoreID::Core1, BaremetalMessage::Ping)
-        );
-    }
 }
 
 impl super::PedalController for PiPedalController {

@@ -48,6 +48,7 @@ pub enum BaremetalMessage {
     #[default]
     Ping,
     TestSendingAU8Lol(u8),
+    TestSendingAU64Lol(u64),
 }
 
 pub trait BufPayload: Copy + Default {}

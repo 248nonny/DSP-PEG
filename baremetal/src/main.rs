@@ -12,19 +12,10 @@ use common::shared_mem::SharedMemBaremetal;
 
 use common::constants::SHARED_BASE_PHYSICAL_ADDR;
 
-mod boot {
-    use core::arch::global_asm;
-    global_asm!(
-        "
-            .section .text._start
-            .globl _start
-        _start:
-            ldr x0, = _stack_start_1
-            mov sp, x0
-            bl _rust_main
-            "
-    );
-}
+use crate::utils::read_register;
+
+mod init;
+mod utils;
 
 #[unsafe(export_name = "_rust_main")]
 pub extern "C" fn rust_main() {
@@ -44,14 +35,18 @@ pub extern "C" fn rust_main() {
         // let mut status = CoreStatus::Init;
         let mut status;
 
-        let mut counter: u8 = 0;
+        shared_mem.write_core_status(CoreID::Core1, CoreStatus::Idle);
+
+        init::tables::setup_mmu();
+
+        let mut counter: u64 = 0;
 
         loop {
             counter += 1;
 
             let r = shared_mem.write_message(
                 CoreID::Core1,
-                common::shared_mem::types::BaremetalMessage::TestSendingAU8Lol(counter),
+                common::shared_mem::types::BaremetalMessage::TestSendingAU64Lol(counter),
             );
 
             // status = match &mut status {

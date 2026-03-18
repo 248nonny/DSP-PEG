@@ -97,8 +97,6 @@ impl eframe::App for MyApp {
 
             self.pedal_controller.print_new_messages();
 
-            self.pedal_controller.test_writing_message();
-
             egui::ScrollArea::vertical()
                 .stick_to_bottom(true)
                 .max_height(400.0)
